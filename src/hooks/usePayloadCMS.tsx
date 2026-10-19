@@ -1,6 +1,8 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { Product, Category, PageBlock, MediaAsset, SiteSettings, Order } from '../types/cms';
 import { initialProducts, initialCategories, initialBlocks, initialMedia, initialSiteSettings, initialOrders } from '../data/initialData';
+import { db } from '../services/firebase';
+import { collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
 
 interface PayloadCMSContextType {
   products: Product[];
@@ -9,21 +11,22 @@ interface PayloadCMSContextType {
   media: MediaAsset[];
   settings: SiteSettings;
   orders: Order[];
-  addProduct: (product: Omit<Product, 'id' | 'updatedAt'>) => void;
-  updateProduct: (id: string, product: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  addCategory: (category: Omit<Category, 'id' | 'updatedAt'>) => void;
-  updateCategory: (id: string, category: Partial<Category>) => void;
-  deleteCategory: (id: string) => void;
-  updateBlock: (id: string, settings: Partial<PageBlock>) => void;
-  toggleBlock: (id: string) => void;
+  addProduct: (product: Omit<Product, 'id' | 'updatedAt'>) => Promise<void>;
+  updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  addCategory: (category: Omit<Category, 'id' | 'updatedAt'>) => Promise<void>;
+  updateCategory: (id: string, category: Partial<Category>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  updateBlock: (id: string, settings: Partial<PageBlock>) => Promise<void>;
+  toggleBlock: (id: string) => Promise<void>;
   reorderBlocks: (newBlocks: PageBlock[]) => void;
   addMedia: (media: Omit<MediaAsset, 'id' | 'uploadedAt'>) => void;
   deleteMedia: (id: string) => void;
   updateSettings: (newSettings: Partial<SiteSettings>) => void;
-  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'status'>) => Order;
-  updateOrderStatus: (id: string, status: Order['status']) => void;
+  addOrder: (order: Omit<Order, 'id' | 'createdAt' | 'status'>) => Promise<Order>;
+  updateOrderStatus: (id: string, status: Order['status']) => Promise<void>;
   resetToDefaults: () => void;
+  isFirebaseSynced: boolean;
 }
 
 const PayloadCMSContext = createContext<PayloadCMSContextType | undefined>(undefined);
@@ -59,6 +62,47 @@ export function PayloadCMSProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : initialOrders;
   });
 
+  const [isFirebaseSynced, setIsFirebaseSynced] = useState(false);
+
+  // Sync with Firestore on mount
+  useEffect(() => {
+    async function fetchFromFirestore() {
+      try {
+        const prodSnap = await getDocs(collection(db, 'products'));
+        if (!prodSnap.empty) {
+          const remoteProducts = prodSnap.docs.map(d => d.data() as Product);
+          setProducts(remoteProducts);
+        } else {
+          // Seed Firestore with initial products
+          for (const p of initialProducts) {
+            await setDoc(doc(db, 'products', p.id), p);
+          }
+        }
+
+        const catSnap = await getDocs(collection(db, 'categories'));
+        if (!catSnap.empty) {
+          const remoteCats = catSnap.docs.map(d => d.data() as Category);
+          setCategories(remoteCats);
+        } else {
+          for (const c of initialCategories) {
+            await setDoc(doc(db, 'categories', c.id), c);
+          }
+        }
+
+        const orderSnap = await getDocs(collection(db, 'orders'));
+        if (!orderSnap.empty) {
+          const remoteOrders = orderSnap.docs.map(d => d.data() as Order);
+          setOrders(remoteOrders);
+        }
+
+        setIsFirebaseSynced(true);
+      } catch (err) {
+        console.warn('Firestore sync fallback to localStorage:', err);
+      }
+    }
+    fetchFromFirestore();
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('payload_products', JSON.stringify(products));
   }, [products]);
@@ -83,45 +127,85 @@ export function PayloadCMSProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('payload_orders', JSON.stringify(orders));
   }, [orders]);
 
-  const addProduct = (productData: Omit<Product, 'id' | 'updatedAt'>) => {
+  const addProduct = async (productData: Omit<Product, 'id' | 'updatedAt'>) => {
     const newProduct: Product = {
       ...productData,
       id: `prod-${Date.now()}`,
       updatedAt: new Date().toISOString(),
     };
-    setProducts([newProduct, ...products]);
+    const updated = [newProduct, ...products];
+    setProducts(updated);
+    try {
+      await setDoc(doc(db, 'products', newProduct.id), newProduct);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const updateProduct = (id: string, productData: Partial<Product>) => {
-    setProducts(products.map(p => p.id === id ? { ...p, ...productData, updatedAt: new Date().toISOString() } : p));
+  const updateProduct = async (id: string, productData: Partial<Product>) => {
+    const updated = products.map(p => p.id === id ? { ...p, ...productData, updatedAt: new Date().toISOString() } : p);
+    setProducts(updated);
+    const target = updated.find(p => p.id === id);
+    if (target) {
+      try {
+        await setDoc(doc(db, 'products', id), target, { merge: true });
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string) => {
     setProducts(products.filter(p => p.id !== id));
+    try {
+      await deleteDoc(doc(db, 'products', id));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const addCategory = (catData: Omit<Category, 'id' | 'updatedAt'>) => {
+  const addCategory = async (catData: Omit<Category, 'id' | 'updatedAt'>) => {
     const newCategory: Category = {
       ...catData,
       id: `cat-${Date.now()}`,
       updatedAt: new Date().toISOString(),
     };
-    setCategories([...categories, newCategory]);
+    const updated = [...categories, newCategory];
+    setCategories(updated);
+    try {
+      await setDoc(doc(db, 'categories', newCategory.id), newCategory);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const updateCategory = (id: string, catData: Partial<Category>) => {
-    setCategories(categories.map(c => c.id === id ? { ...c, ...catData, updatedAt: new Date().toISOString() } : c));
+  const updateCategory = async (id: string, catData: Partial<Category>) => {
+    const updated = categories.map(c => c.id === id ? { ...c, ...catData, updatedAt: new Date().toISOString() } : c);
+    setCategories(updated);
+    const target = updated.find(c => c.id === id);
+    if (target) {
+      try {
+        await setDoc(doc(db, 'categories', id), target, { merge: true });
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
-  const deleteCategory = (id: string) => {
+  const deleteCategory = async (id: string) => {
     setCategories(categories.filter(c => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'categories', id));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const updateBlock = (id: string, blockData: Partial<PageBlock>) => {
+  const updateBlock = async (id: string, blockData: Partial<PageBlock>) => {
     setBlocks(blocks.map(b => b.id === id ? { ...b, ...blockData, updatedAt: new Date().toISOString() } : b));
   };
 
-  const toggleBlock = (id: string) => {
+  const toggleBlock = async (id: string) => {
     setBlocks(blocks.map(b => b.id === id ? { ...b, enabled: !b.enabled, updatedAt: new Date().toISOString() } : b));
   };
 
@@ -146,19 +230,34 @@ export function PayloadCMSProvider({ children }: { children: ReactNode }) {
     setSettings(prev => ({ ...prev, ...newSettings }));
   };
 
-  const addOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'status'>) => {
+  const addOrder = async (orderData: Omit<Order, 'id' | 'createdAt' | 'status'>) => {
     const newOrder: Order = {
       ...orderData,
       id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
       status: 'processing',
       createdAt: new Date().toISOString(),
     };
-    setOrders([newOrder, ...orders]);
+    const updated = [newOrder, ...orders];
+    setOrders(updated);
+    try {
+      await setDoc(doc(db, 'orders', newOrder.id), newOrder);
+    } catch (e) {
+      console.error(e);
+    }
     return newOrder;
   };
 
-  const updateOrderStatus = (id: string, status: Order['status']) => {
-    setOrders(orders.map(o => o.id === id ? { ...o, status } : o));
+  const updateOrderStatus = async (id: string, status: Order['status']) => {
+    const updated = orders.map(o => o.id === id ? { ...o, status } : o);
+    setOrders(updated);
+    const target = updated.find(o => o.id === id);
+    if (target) {
+      try {
+        await setDoc(doc(db, 'orders', id), target, { merge: true });
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
   const resetToDefaults = () => {
@@ -195,6 +294,7 @@ export function PayloadCMSProvider({ children }: { children: ReactNode }) {
         addOrder,
         updateOrderStatus,
         resetToDefaults,
+        isFirebaseSynced,
       }}
     >
       {children}

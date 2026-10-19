@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Store product document",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 128 },
+        "slug": { "type": "string", "maxLength": 128 },
+        "price": { "type": "number" },
+        "compareAtPrice": { "type": "number" },
+        "category": { "type": "string", "maxLength": 64 },
+        "stock": { "type": "number" },
+        "description": { "type": "string", "maxLength": 1024 },
+        "status": { "type": "string", "enum": ["published", "draft"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "price", "category", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product category document",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 64 },
+        "slug": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 256 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer e-commerce order",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "address": { "type": "string", "maxLength": 256 },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "email", "total", "status"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Products collection"
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Categories collection"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer orders collection"
+    }
+  }
+}
