@@ -1,0 +1,6 @@
+{
+  "name": "Payload Studio — E-Commerce & CMS",
+  "description": "An integrated Payload CMS admin studio and e-commerce storefront with live block builder and collection management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
