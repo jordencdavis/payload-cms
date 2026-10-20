@@ -34,7 +34,7 @@ type AdminTab = 'dashboard' | 'products' | 'categories' | 'blocks' | 'media' | '
 export function AdminLayout({ onSwitchToStore }: AdminLayoutProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { resetToDefaults } = usePayloadCMS();
+  const { resetToDefaults, isFirebaseSynced, syncError } = usePayloadCMS();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -186,10 +186,22 @@ export function AdminLayout({ onSwitchToStore }: AdminLayoutProps) {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Database Connected (LocalStorage)
-            </div>
+            {isFirebaseSynced ? (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Cloud Synced (Firestore)
+              </div>
+            ) : syncError ? (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-medium" title={syncError}>
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                Local Mode (Syncing...)
+              </div>
+            ) : (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-stone-100 border border-stone-200 text-stone-700 rounded-lg text-xs font-medium">
+                <span className="w-2 h-2 rounded-full bg-stone-400 animate-pulse"></span>
+                Connecting to Cloud...
+              </div>
+            )}
 
             <button
               onClick={onSwitchToStore}
@@ -1096,6 +1108,10 @@ function MediaLibraryAdminView({ showToast }: { showToast: (msg: string) => void
 function GlobalsAdminView({ showToast }: { showToast: (msg: string) => void }) {
   const { settings, updateSettings } = usePayloadCMS();
   const [formData, setFormData] = useState(settings);
+
+  React.useEffect(() => {
+    setFormData(settings);
+  }, [settings]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

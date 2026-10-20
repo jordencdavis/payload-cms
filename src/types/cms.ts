@@ -40,6 +40,7 @@ export interface PageBlock {
     imagePosition?: 'left' | 'right';
     accentText?: string;
   };
+  order?: number;
   updatedAt: string;
 }
 
